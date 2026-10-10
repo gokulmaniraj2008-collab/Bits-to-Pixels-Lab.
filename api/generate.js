@@ -14,8 +14,10 @@ export default async function handler(req, res) {
     if (!prompt) return res.status(400).json({ error: "Please enter an image prompt." });
     if (prompt.length > 500) return res.status(400).json({ error: "Prompt must be 500 characters or fewer." });
 
+    // FLUX.1-schnell is no longer supported by the hf-inference provider.
+    // This model is currently listed by Hugging Face for text-to-image on hf-inference.
     const upstream = await fetch(
-      "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
+      "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-3-medium-diffusers",
       {
         method: "POST",
         headers: {
@@ -25,7 +27,7 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify({
           inputs: prompt,
-          parameters: { width: 768, height: 768, num_inference_steps: 4 }
+          parameters: { width: 768, height: 768 }
         })
       }
     );
@@ -35,6 +37,9 @@ export default async function handler(req, res) {
       console.error("Hugging Face image generation failed:", upstream.status, detail);
       if (upstream.status === 401 || upstream.status === 403) {
         return res.status(502).json({ error: "The AI provider rejected the token. Check that HF_TOKEN is valid and has Inference Providers permission." });
+      }
+      if (upstream.status === 410) {
+        return res.status(502).json({ error: "The selected image model is not supported by the provider. Please contact the site maintainer." });
       }
       if (upstream.status === 429) {
         return res.status(429).json({ error: "The AI provider is busy or the free allowance is exhausted. Try again later or check your provider account." });
