@@ -85,13 +85,13 @@ $('#generateImage').addEventListener('click',async()=>{
   status.textContent='Request accepted. Waiting for the shared GPU…';
   const resultController=new AbortController(),resultTimer=setTimeout(()=>resultController.abort(),180000);
   let resultResponse,stream;
-  try{resultResponse=await fetch(space+'/gradio_api/call/generate_image/'+encodeURIComponent(job.event_id),{signal:resultController.signal});stream=await resultResponse.text()}
+  try{resultResponse=await fetch(space+'/gradio_api/call/v2/generate_image/'+encodeURIComponent(job.event_id),{signal:resultController.signal});stream=await resultResponse.text()}
   catch(err){if(err.name==='AbortError')throw new Error('Image generation timed out after 3 minutes. The shared GPU may be busy; please try again.');throw new Error('The image job was accepted, but the result connection failed. Please try again.')}
   finally{clearTimeout(resultTimer)}
   if(!resultResponse.ok)throw new Error('Could not retrieve the image result (HTTP '+resultResponse.status+'). Try again later.');
   const events=stream.split(/\r?\n\r?\n/).map(block=>{const type=(block.match(/^event:\s*(.+)$/m)||[])[1]||'';const line=(block.match(/^data:\s*(.*)$/m)||[])[1];return {type,data:line}}).filter(e=>e.data!==undefined);
   let result=null;
-  for(const ev of events){let parsed;try{parsed=JSON.parse(ev.data)}catch(e){if(ev.type==='error')throw new Error('The image model reported an error: '+ev.data);continue}if(ev.type==='error')throw new Error(typeof parsed==='string'?parsed:'The image model could not complete this request.');if(ev.type==='complete'||Array.isArray(parsed)){result=parsed}}
+  for(const ev of events){let parsed;try{parsed=JSON.parse(ev.data)}catch(e){if(ev.type==='error')throw new Error('The image model reported an error: '+ev.data);continue}if(ev.type==='error'){const detail=typeof parsed==='string'?parsed:(parsed&&typeof parsed==='object'?(parsed.error||parsed.detail||parsed.message||JSON.stringify(parsed)):'The model returned an empty error.');throw new Error('Image model error: '+detail)}if(ev.type==='complete'||Array.isArray(parsed)){result=parsed}}
   if(!result)throw new Error('The model did not return a completed image. The shared GPU may be busy; try again shortly.');
   function findImage(value,depth=0){if(depth>6||value==null)return null;if(typeof value==='string'){if(value.startsWith('http://')||value.startsWith('https://')||value.startsWith('/'))return value;return null}if(Array.isArray(value)){for(const item of value){const found=findImage(item,depth+1);if(found)return found}return null}if(typeof value==='object'){if(typeof value.url==='string'&&value.url)return value.url;if(typeof value.path==='string'&&value.path)return value.path;for(const key of ['data','output','image','images','value']){const found=findImage(value[key],depth+1);if(found)return found}}return null}
   let imageUrl=findImage(result);
