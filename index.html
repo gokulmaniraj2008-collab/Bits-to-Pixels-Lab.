@@ -57,7 +57,7 @@ $('#generateImage').addEventListener('click',async()=>{
  const prompt=$('#promptInput').value.trim();
  const status=$('#generationStatus'), output=$('#generatedOutput'), link=$('#downloadImage'), button=$('#generateImage');
  if(!prompt){status.textContent='Please describe the image first.';return}
- const space='https://akhaliq-z-image-turbo.hf.space';
+ const space='https://mrfakename-z-image-turbo.hf.space';
  const [width,height]=$('#imageSize').value.split(',').map(Number);
  const realistic=$('#photoMode').checked;
  const modelPrompt=realistic ? prompt+', photorealistic, highly detailed real-world materials, natural lighting, realistic reflections, professional photography, sharp focus' : prompt;
@@ -65,11 +65,11 @@ $('#generateImage').addEventListener('click',async()=>{
  try{
   // The current Space API expects named JSON fields and uses the v2 endpoint.
   // Bound network waits so the UI can recover if the public Space hangs.
-  const submitBody=JSON.stringify({data:[modelPrompt,height,width,9,Math.floor(Math.random()*4294967295),true]});
+  const submitBody=JSON.stringify({prompt:modelPrompt,height,width,num_inference_steps:9,seed:Math.floor(Math.random()*4294967295),randomize_seed:true});
   let submit,submitText,job;
   for(let attempt=0;attempt<2;attempt++){
    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),30000);
-   try{submit=await fetch(space+'/gradio_api/call/generate_image',{method:'POST',headers:{'Content-Type':'application/json'},body:submitBody,signal:controller.signal});submitText=await submit.text()}
+   try{submit=await fetch(space+'/gradio_api/call/v2/generate_image',{method:'POST',headers:{'Content-Type':'application/json'},body:submitBody,signal:controller.signal});submitText=await submit.text()}
    catch(err){if(err.name==='AbortError')throw new Error('The image service took too long to accept the request. Please try again.');throw new Error('Could not connect to the free image service. Check your connection and try again.')}
    finally{clearTimeout(timer)}
    try{job=JSON.parse(submitText)}catch(e){throw new Error('The image service returned an unreadable response (HTTP '+submit.status+'). Try again later.')}
