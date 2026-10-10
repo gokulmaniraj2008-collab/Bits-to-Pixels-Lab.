@@ -64,14 +64,30 @@ $('#generateImage').addEventListener('click',async()=>{
  button.disabled=true;button.textContent='Generating…';status.textContent='Connecting to the free image model ('+width+' × '+height+'). Shared GPU queues can take time.';link.hidden=true;output.textContent='Submitting your prompt to the image model…';
  try{
   // The current Space API expects named JSON fields and uses the v2 endpoint.
-  const submit=await fetch(space+'/gradio_api/call/v2/generate_image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:modelPrompt,height,width,num_inference_steps:9,seed:Math.floor(Math.random()*4294967295),randomize_seed:true})});
-  const submitText=await submit.text();
-  let job;try{job=JSON.parse(submitText)}catch(e){throw new Error('The image service returned an unreadable response (HTTP '+submit.status+'). Try again later.')}
-  if(!submit.ok)throw new Error((job.detail||job.error||'Image service request failed')+' (HTTP '+submit.status+').');
-  if(!job.event_id)throw new Error('The image service did not return a job ID. Try again later.');
+  // Bound network waits so the UI can recover if the public Space hangs.
+  const submitBody=JSON.stringify({prompt:modelPrompt,height,width,num_inference_steps:9,seed:Math.floor(Math.random()*4294967295),randomize_seed:true});
+  let submit,submitText,job;
+  for(let attempt=0;attempt<2;attempt++){
+   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),30000);
+   try{submit=await fetch(space+'/gradio_api/call/v2/generate_image',{method:'POST',headers:{'Content-Type':'application/json'},body:submitBody,signal:controller.signal});submitText=await submit.text()}
+   catch(err){if(err.name==='AbortError')throw new Error('The image service took too long to accept the request. Please try again.');throw new Error('Could not connect to the free image service. Check your connection and try again.')}
+   finally{clearTimeout(timer)}
+   try{job=JSON.parse(submitText)}catch(e){throw new Error('The image service returned an unreadable response (HTTP '+submit.status+'). Try again later.')}
+   if(submit.ok)break;
+   // Retry only a clear temporary rejection; never resubmit an accepted/uncertain job.
+   if(attempt===0&&(submit.status===429||submit.status===503)){const wait=Math.min(5,Math.max(1,Number(submit.headers.get('Retry-After'))||2));status.textContent='Free service is busy. Retrying once in '+wait+' seconds…';await new Promise(resolve=>setTimeout(resolve,wait*1000));continue}
+   const detail=job.detail||job.error||'Image service request failed';
+   if(submit.status===429)throw new Error('The free image service is rate-limited right now. Wait a little and try again.');
+   if(submit.status===503)throw new Error('The free image service is temporarily unavailable. Try again in a minute.');
+   throw new Error(detail+' (HTTP '+submit.status+').');
+  }
+  if(!job||!job.event_id)throw new Error('The image service did not return a job ID. Try again later.');
   status.textContent='Request accepted. Waiting for the shared GPU…';
-  const resultResponse=await fetch(space+'/gradio_api/call/generate_image/'+encodeURIComponent(job.event_id));
-  const stream=await resultResponse.text();
+  const resultController=new AbortController(),resultTimer=setTimeout(()=>resultController.abort(),180000);
+  let resultResponse,stream;
+  try{resultResponse=await fetch(space+'/gradio_api/call/generate_image/'+encodeURIComponent(job.event_id),{signal:resultController.signal});stream=await resultResponse.text()}
+  catch(err){if(err.name==='AbortError')throw new Error('Image generation timed out after 3 minutes. The shared GPU may be busy; please try again.');throw new Error('The image job was accepted, but the result connection failed. Please try again.')}
+  finally{clearTimeout(resultTimer)}
   if(!resultResponse.ok)throw new Error('Could not retrieve the image result (HTTP '+resultResponse.status+'). Try again later.');
   const events=stream.split(/\r?\n\r?\n/).map(block=>{const type=(block.match(/^event:\s*(.+)$/m)||[])[1]||'';const line=(block.match(/^data:\s*(.*)$/m)||[])[1];return {type,data:line}}).filter(e=>e.data!==undefined);
   let result=null;
