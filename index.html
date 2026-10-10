@@ -98,7 +98,7 @@ $('#generateImage').addEventListener('click',async()=>{
   if(!imageUrl)throw new Error('The model finished, but its response contained no image URL. Please try again later.');
   if(imageUrl.startsWith('/'))imageUrl=space+imageUrl;
   output.replaceChildren();const img=document.createElement('img');img.src=imageUrl;img.alt='AI-generated image based on: '+prompt;img.style.cssText='display:block;width:100%;height:auto;max-height:700px;object-fit:contain;border-radius:12px';img.onerror=()=>{output.textContent='The model returned an image reference, but it could not be loaded. Please try again.'};output.appendChild(img);link.href=imageUrl;link.target='_blank';link.rel='noopener';link.hidden=false;status.textContent='Image generated successfully by the free community-hosted model.';
- }catch(error){output.textContent=error.message||'Image generation failed. Please try again.';status.textContent='Generation failed. The free shared service may be busy or rate-limited; no payment was made.'}
+ }catch(error){const reason=error.message||'Image generation failed. Please try again.';output.textContent=reason;status.textContent='Generation failed: '+reason+' No payment was made.'}
  finally{button.disabled=false;button.textContent='Generate real AI image'}
 });
 runPrompt();
